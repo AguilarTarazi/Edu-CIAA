@@ -23,7 +23,7 @@ int main(void){
 
 	StartOS(AppMode1); //Inicia el Sistema Operativo
 
-	return 1;
+	return 0;
 }
 
 void ErrorHook(void)
@@ -38,25 +38,24 @@ TASK(InitTask){
 	//Inicializa el Kernel y los dispositivos
 	ciaak_start();
 
-	//Llamadas a las funciones del ususario
-	configurar_salidas();
-	configurar_entradas();
-
-
 	//Abrimos un archivo donde estan todas las salidas y le decimos que lo vamos a LEER y ESCRIBIR
 	fd_out = ciaaPOSIX_open("/dev/dio/out/0",ciaaPOSIX_O_RDWR);
 
 	//Abrimos el archivo donde estan todas las entradas y le decimos que lo vamos a LEER
 	fd_in = ciaaPOSIX_open("/dev/dio/in/0", ciaaPOSIX_O_RDONLY);
 
-	SetRelAlarm(ActivateSwitchesTask, 20, 50);
+	//Llamadas a las funciones del ususario
+	configurar_salidas();
+	configurar_entradas();
 
+
+	SetRelAlarm(ActivateSwitchesTask, 20, 50);
 	SetRelAlarm(ActivateInputsTask, 40, 60);
 
 	TerminateTask();
 }
 
-TASK(ActivateSwitchesTask){
+TASK(SwitchesTask){
 	uint32_t inputs;
 
 	//Leemos 1 byte del fd_input
@@ -74,7 +73,7 @@ TASK(ActivateSwitchesTask){
 	TerminateTask();
 }
 
-TASK(ActivateInputsTask){
+TASK(InputsTask){
 	uint32_t outputs;
 	boolean value;
 
