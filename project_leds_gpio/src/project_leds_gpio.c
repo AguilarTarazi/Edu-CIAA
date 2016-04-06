@@ -56,7 +56,7 @@ TASK(InitTask){
 }
 
 TASK(SwitchesTask){
-	uint32_t inputs;
+	uint8_t inputs;
 
 	//Leemos 1 byte del fd_input
 	ciaaPOSIX_read(fd_in, &inputs, 1);
@@ -74,7 +74,7 @@ TASK(SwitchesTask){
 }
 
 TASK(InputsTask){
-	uint32_t outputs;
+	uint8_t outputs;
 	boolean value;
 
 	//Leemos el valor del pin de entrada
@@ -82,12 +82,14 @@ TASK(InputsTask){
 
 	//Si el pin esta en alto, encendemos los leds
 	if(value==1){
-		ciaaPOSIX_write(fd_out, &outputs, 63);
+		outputs=63;
+		ciaaPOSIX_write(fd_out, &outputs, 1);
 	}
 
 	//Si estan en bajo, apagamos los leds
 	if(value==0){
-		ciaaPOSIX_write(fd_out, &outputs, 0);
+		outputs=0;
+		ciaaPOSIX_write(fd_out, &outputs, 1);
 	}
 
 	TerminateTask();
@@ -102,8 +104,8 @@ void configurar_salidas(){
 
 	//Configura el GPIO 2 pin 8 como SALIDA
 	//SetDir(puerto, puertoGPIO, pinGPIO, salida)
-	Chip_GPIO_SetDir(LPC_GPIO_PORT, 5, 8, 1);
-	Chip_GPIO_SetDir(LPC_GPIO_PORT, 2, 8, 1);
+	Chip_GPIO_SetDir(LPC_GPIO_PORT, 5, (1<<8), 1);
+	Chip_GPIO_SetDir(LPC_GPIO_PORT, 2, (1<<8), 1);
 
 	//Inicializacion del estado del pin
 	Chip_GPIO_SetPinState(LPC_GPIO_PORT, 5, 8, 0);
@@ -115,6 +117,6 @@ void configurar_entradas(){
 	Chip_SCU_PinMux(6,10, SCU_MODE_PULLUP | SCU_MODE_ZIF_DIS | SCU_MODE_INBUFF_EN, FUNC0);
 
 	//Configuramos el GPIO 3 pin 6 como entrada
-	Chip_GPIO_SetDir(LPC_GPIO_PORT, 3, 6, 0);
+	Chip_GPIO_SetDir(LPC_GPIO_PORT, 3, (1<<6), 0);
 
 }
