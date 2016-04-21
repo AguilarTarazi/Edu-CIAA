@@ -1,7 +1,4 @@
-/* Copyright 2014, Mariano Cerdeiro
- * Copyright 2014, Gustavo Muro
- * Copyright 2014, Pablo Ridolfi
- * Copyright 2014, Juan Cecconi
+/* Copyright 2014, Gustavo Muro
  *
  * This file is part of CIAA Firmware.
  *
@@ -43,7 +40,7 @@
  ** @{ */
 /** \addtogroup Examples CIAA Firmware Examples
  ** @{ */
-/** \addtogroup ADC DAC ADC & DAC example source file
+/** \addtogroup Blinking_Modbus_master Blinking Modbus master example source file
  ** @{ */
 
 /*
@@ -59,29 +56,37 @@
 /*
  * modification history (new versions first)
  * -----------------------------------------------------------
- * 20140805 v0.0.1   GMuro first functional version
+ * 20141108 v0.0.1 GMuro   initial version
  */
 
 /*==================[inclusions]=============================================*/
 #include "os.h"
 #include "ciaaPOSIX_stdio.h"
-#include "ciaaPOSIX_stdlib.h"
-#include "ciaak.h"            /* <= ciaa kernel header */
-#include "serial.h"
+#include "ciaaModbus.h"
+#include "ciaak.h"
+#include "blinking_modbus_master.h"
 
 /*==================[macros and definitions]=================================*/
+#define CIAA_BLINKING_MODBUS_ID     2
+
+#define CIAA_MODBUS_ADDRESS_INPUTS  0X0000
+#define CIAA_MODBUS_ADDRESS_OUTPUS  0X0001
+
+typedef enum
+{
+   CIAA_BLINKING_MOD_MAST_STATE_READING = 0,
+   CIAA_BLINKING_MOD_MAST_STATE_WRITING,
+   CIAA_BLINKING_MOD_MAST_STATE_COMPLETE,
+}ciaaBlinkingModMast_stateEnum;
 
 /*==================[internal data declaration]==============================*/
 
 /*==================[internal functions declaration]=========================*/
 
 /*==================[internal data definition]===============================*/
-
-/** \brief File descriptor for ADC
- *
- * Device path /dev/serial/aio/in/0
- */
-static int32_t fd_adc;
+static int32_t hModbusMaster;
+static int32_t hModbusAscii;
+static int32_t hModbusGateway;
 
 /** \brief File descriptor for digital output ports
  *
@@ -89,11 +94,11 @@ static int32_t fd_adc;
  */
 static int32_t fd_out;
 
-/** \brief File descriptor of the USB uart
+/** \brief File descriptor for digital inputs ports
  *
- * Device path /dev/serial/uart/1
+ * Device path /dev/dio/in/0
  */
-static int32_t fd_uart;
+static int32_t fd_in;
 
 /*==================[external data definition]===============================*/
 
@@ -151,73 +156,146 @@ void ErrorHook(void)
  */
 TASK(InitTask)
 {
+   int32_t fdSerialPort;
+
    /* init the ciaa kernel */
    ciaak_start();
-
-   /* open CIAA ADC */
-   //fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 100000);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_3);
 
    /* open CIAA digital outputs */
    fd_out = ciaaPOSIX_open("/dev/dio/out/0", ciaaPOSIX_O_RDWR);
 
-   /* open UART connected to USB bridge (FT2232) */
-   fd_uart = ciaaPOSIX_open("/dev/serial/uart/1", ciaaPOSIX_O_RDWR);
+   /* open CIAA digital inputs */
+   fd_in = ciaaPOSIX_open("/dev/dio/in/0", ciaaPOSIX_O_RDWR);
 
-   /* change baud rate for uart usb */
-   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_BAUDRATE, (void *)ciaaBAUDRATE_115200);
+   fdSerialPort = ciaaPOSIX_open("/dev/serial/uart/0", ciaaPOSIX_O_RDWR | ciaaPOSIX_O_NONBLOCK);
 
-   /* change FIFO TRIGGER LEVEL for uart usb */
-   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_FIFO_TRIGGER_LEVEL, (void *)ciaaFIFO_TRIGGER_LEVEL2);
+   /* Open Modbus Master */
+   hModbusMaster = ciaaModbus_masterOpen();
 
-   /* Activates the ModbusSlave task */
-   ActivateTask(Analogic);
-   //SetRelAlarm(AnalogicAlarm, 250, 50);
+   /* Open Transport Modbus Ascii */
+   hModbusAscii = ciaaModbus_transportOpen(
+         fdSerialPort,
+         CIAAMODBUS_TRANSPORT_MODE_ASCII_MASTER);
+
+   /* Open Gateway Modbus */
+   hModbusGateway = ciaaModbus_gatewayOpen();
+
+   /* Add Modbus Master to gateway */
+   ciaaModbus_gatewayAddMaster(
+         hModbusGateway,
+         hModbusMaster);
+
+   /* Add Modbus Transport to gateway */
+   ciaaModbus_gatewayAddTransport(
+         hModbusGateway,
+         hModbusAscii);
+
+   SetRelAlarm(ActivateModbusTask, 5, CIAA_MODBUS_TIME_BASE);
+
+   SetRelAlarm(AlarmCallBackPollingSlave, 10, 100);
 
    /* end InitTask */
    TerminateTask();
 }
 
-TASK(Analogic)
+/** \brief Modbus Task
+ *
+ * This task is activated by the Alarm ActivateModbusTask.
+ */
+TASK(ModbusMaster)
 {
-   /* 
-      ADC!
-   */
-   uint32_t serie;
+   ciaaModbus_gatewayMainTask(hModbusGateway);
 
-   /* Read ADC. */
-   ciaaPOSIX_read(serie, &serie, sizeof(serie));
-
-   /* Signal gain. */
-  // adc_data >>= 0;
-
-   /* 
-      SERIAL!
-   */
-
-   char message[] = "abcdefghijklmnopqrstuvwxyz";
-   ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
-   //char message2[] = "Mane es un puto. No hay jaja   ";
-  // ciaaPOSIX_write(fd_uart, message2, ciaaPOSIX_strlen(message2));
-   /* 
-      BLINKING!
-
-   uint8_t outputs;   to store outputs status
-
-   /* write blinking message */
-   //ciaaPOSIX_printf("Blinking\n");
-
-   /* blink output */
-  // ciaaPOSIX_read(fd_out, &outputs, 1);
-  // outputs ^= 0x20;
-  // ciaaPOSIX_write(fd_out, &outputs, 1);
-
-   /* end of Task */
    TerminateTask();
 }
+
+/** \brief CallBack Activate Polling Slave Task
+ *
+ * This function activate task PollingSlave.
+ */
+ALARMCALLBACK(CallBackActivatePollingSlave)
+{
+   TaskStateType state;
+
+   GetTaskState(PollingSlave, &state);
+
+   if (SUSPENDED == state)
+   {
+      ActivateTask(PollingSlave);
+   }
+}
+
+/** \brief Polling Slave Task
+ *
+ * This task is activated by the CallBackActivatePollingSlave
+ * and it self if communication pending.
+ */
+TASK(PollingSlave)
+{
+   ciaaBlinkingModMast_stateEnum stateModMast = CIAA_BLINKING_MOD_MAST_STATE_READING;
+   int16_t hrValue;
+   int8_t ret;
+
+   do
+   {
+      switch (stateModMast)
+      {
+         /* reading inputs of CIAA slave modbus */
+         default:
+         case CIAA_BLINKING_MOD_MAST_STATE_READING:
+
+            /* read inputs from ciaa modbus slave */
+            ret = ciaaModbus_masterCmd0x03ReadHoldingRegisters(
+                  hModbusMaster,
+                  CIAA_MODBUS_ADDRESS_INPUTS,
+                  1,
+                  &hrValue,
+                  CIAA_BLINKING_MODBUS_ID,
+                  NULL);
+
+            if (CIAA_MODBUS_E_NO_ERROR == ret)
+            {
+               /* write outputs */
+               ciaaPOSIX_write(fd_out, &hrValue, 1);
+
+               /* set next state */
+               stateModMast = CIAA_BLINKING_MOD_MAST_STATE_WRITING;
+            }
+            break;
+
+         /* writing inputs in to outputs of CIAA slave modbus */
+         case CIAA_BLINKING_MOD_MAST_STATE_WRITING:
+            /* read inputs */
+            hrValue = 0;
+            ciaaPOSIX_read(fd_in, &hrValue, 1);
+
+            /* write in to ciaa slave */
+            ret = ciaaModbus_masterCmd0x10WriteMultipleRegisters(
+                  hModbusMaster,
+                  CIAA_MODBUS_ADDRESS_OUTPUS,
+                  1,
+                  &hrValue,
+                  CIAA_BLINKING_MODBUS_ID,
+                  NULL);
+
+            if (CIAA_MODBUS_E_NO_ERROR != ret)
+            {
+               /* do nothing, next state idle */
+            }
+
+            /* set next state */
+            stateModMast = CIAA_BLINKING_MOD_MAST_STATE_COMPLETE;
+            break;
+      }
+
+   }while (CIAA_BLINKING_MOD_MAST_STATE_COMPLETE > stateModMast);
+
+   TerminateTask();
+}
+
 
 /** @} doxygen end group definition */
 /** @} doxygen end group definition */
 /** @} doxygen end group definition */
 /*==================[end of file]============================================*/
+

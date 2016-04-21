@@ -1,4 +1,4 @@
-/* Copyright 2014, Mariano Cerdeiro
+//* Copyright 2014, Mariano Cerdeiro
  * Copyright 2014, Gustavo Muro
  * Copyright 2014, Pablo Ridolfi
  * Copyright 2014, Juan Cecconi
@@ -67,7 +67,7 @@
 #include "ciaaPOSIX_stdio.h"
 #include "ciaaPOSIX_stdlib.h"
 #include "ciaak.h"            /* <= ciaa kernel header */
-#include "serial.h"
+#include "adc_serial.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -155,9 +155,9 @@ TASK(InitTask)
    ciaak_start();
 
    /* open CIAA ADC */
-   //fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 100000);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_3);
+   fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
+   ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 100000);
+   ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_3);
 
    /* open CIAA digital outputs */
    fd_out = ciaaPOSIX_open("/dev/dio/out/0", ciaaPOSIX_O_RDWR);
@@ -173,7 +173,6 @@ TASK(InitTask)
 
    /* Activates the ModbusSlave task */
    ActivateTask(Analogic);
-   //SetRelAlarm(AnalogicAlarm, 250, 50);
 
    /* end InitTask */
    TerminateTask();
@@ -181,37 +180,35 @@ TASK(InitTask)
 
 TASK(Analogic)
 {
-   /* 
+   /*
       ADC!
    */
-   uint32_t serie;
+   uint16_t adc_data;
 
    /* Read ADC. */
-   ciaaPOSIX_read(serie, &serie, sizeof(serie));
+   ciaaPOSIX_read(fd_adc, &adc_data, sizeof(adc_data));
 
    /* Signal gain. */
-  // adc_data >>= 0;
+   adc_data >>= 0;
 
-   /* 
+   /*
       SERIAL!
    */
-
-   char message[] = "abcdefghijklmnopqrstuvwxyz";
+   char message[] = "Hi! :)\nSerialEchoTask: Waiting for characters...\n";
    ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
-   //char message2[] = "Mane es un puto. No hay jaja   ";
-  // ciaaPOSIX_write(fd_uart, message2, ciaaPOSIX_strlen(message2));
-   /* 
-      BLINKING!
 
-   uint8_t outputs;   to store outputs status
+   /*
+      BLINKING!
+   */
+   uint8_t outputs;  /* to store outputs status                */
 
    /* write blinking message */
-   //ciaaPOSIX_printf("Blinking\n");
+   ciaaPOSIX_printf("Blinking\n");
 
    /* blink output */
-  // ciaaPOSIX_read(fd_out, &outputs, 1);
-  // outputs ^= 0x20;
-  // ciaaPOSIX_write(fd_out, &outputs, 1);
+   ciaaPOSIX_read(fd_out, &outputs, 1);
+   outputs ^= 0x20;
+   ciaaPOSIX_write(fd_out, &outputs, 1);
 
    /* end of Task */
    TerminateTask();

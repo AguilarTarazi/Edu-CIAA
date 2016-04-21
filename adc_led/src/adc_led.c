@@ -67,7 +67,7 @@
 #include "ciaaPOSIX_stdio.h"
 #include "ciaaPOSIX_stdlib.h"
 #include "ciaak.h"            /* <= ciaa kernel header */
-#include "serial.h"
+#include "adc_led.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -83,17 +83,12 @@
  */
 static int32_t fd_adc;
 
-/** \brief File descriptor for digital output ports
+/** \brief File descriptor for DAC
  *
- * Device path /dev/dio/out/0
+ * Device path /dev/serial/aio/out/0
  */
+static int32_t fd_dac;
 static int32_t fd_out;
-
-/** \brief File descriptor of the USB uart
- *
- * Device path /dev/serial/uart/1
- */
-static int32_t fd_uart;
 
 /*==================[external data definition]===============================*/
 
@@ -155,25 +150,15 @@ TASK(InitTask)
    ciaak_start();
 
    /* open CIAA ADC */
-   //fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 100000);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_3);
+   fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
+   ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 10);
+   ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_1);
 
    /* open CIAA digital outputs */
    fd_out = ciaaPOSIX_open("/dev/dio/out/0", ciaaPOSIX_O_RDWR);
 
-   /* open UART connected to USB bridge (FT2232) */
-   fd_uart = ciaaPOSIX_open("/dev/serial/uart/1", ciaaPOSIX_O_RDWR);
-
-   /* change baud rate for uart usb */
-   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_BAUDRATE, (void *)ciaaBAUDRATE_115200);
-
-   /* change FIFO TRIGGER LEVEL for uart usb */
-   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_FIFO_TRIGGER_LEVEL, (void *)ciaaFIFO_TRIGGER_LEVEL2);
-
    /* Activates the ModbusSlave task */
    ActivateTask(Analogic);
-   //SetRelAlarm(AnalogicAlarm, 250, 50);
 
    /* end InitTask */
    TerminateTask();
@@ -181,39 +166,40 @@ TASK(InitTask)
 
 TASK(Analogic)
 {
-   /* 
-      ADC!
-   */
-   uint32_t serie;
+   uint16_t valor;
+   uint8_t outputs;
+   static uint32_t promedio=0;
+   static uint32_t i=0;
 
    /* Read ADC. */
-   ciaaPOSIX_read(serie, &serie, sizeof(serie));
 
-   /* Signal gain. */
-  // adc_data >>= 0;
+   ciaaPOSIX_read(fd_adc, &valor, sizeof(valor));
+   promedio=promedio+valor;
 
-   /* 
-      SERIAL!
-   */
+   if(i==9)
+   {
+	   promedio=promedio/10;
 
-   char message[] = "abcdefghijklmnopqrstuvwxyz";
-   ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
-   //char message2[] = "Mane es un puto. No hay jaja   ";
-  // ciaaPOSIX_write(fd_uart, message2, ciaaPOSIX_strlen(message2));
-   /* 
-      BLINKING!
-
-   uint8_t outputs;   to store outputs status
-
-   /* write blinking message */
-   //ciaaPOSIX_printf("Blinking\n");
-
-   /* blink output */
-  // ciaaPOSIX_read(fd_out, &outputs, 1);
-  // outputs ^= 0x20;
-  // ciaaPOSIX_write(fd_out, &outputs, 1);
-
-   /* end of Task */
+	   if(promedio<256){
+		   outputs=7;
+		   ciaaPOSIX_write(fd_out, &outputs, 1);
+	   }
+	   else	if(promedio<512){
+			   outputs=8;
+			   ciaaPOSIX_write(fd_out, &outputs, 1);
+			 }
+			else if(promedio<768){
+					 outputs=16;
+					 ciaaPOSIX_write(fd_out, &outputs, 1);
+					}
+				 else if(promedio<1024){
+				   outputs=32;
+				   ciaaPOSIX_write(fd_out, &outputs, 1);
+					 }
+	   promedio=0;
+	   i=-1;
+   }
+   i++;
    TerminateTask();
 }
 
@@ -221,3 +207,4 @@ TASK(Analogic)
 /** @} doxygen end group definition */
 /** @} doxygen end group definition */
 /*==================[end of file]============================================*/
+

@@ -1,7 +1,7 @@
 /* Copyright 2014, Mariano Cerdeiro
- * Copyright 2014, Gustavo Muro
  * Copyright 2014, Pablo Ridolfi
  * Copyright 2014, Juan Cecconi
+ * Copyright 2014, Gustavo Muro
  *
  * This file is part of CIAA Firmware.
  *
@@ -33,9 +33,9 @@
  *
  */
 
-/** \brief Blinking Modbus example source file
+/** \brief Blinking_echo example source file
  **
- ** This is a mini example of the CIAA Firmware
+ ** This is a mini example of the CIAA Firmware.
  **
  **/
 
@@ -43,31 +43,35 @@
  ** @{ */
 /** \addtogroup Examples CIAA Firmware Examples
  ** @{ */
-/** \addtogroup ADC DAC ADC & DAC example source file
+/** \addtogroup Blinking Blinking_echo example source file
  ** @{ */
 
 /*
  * Initials     Name
  * ---------------------------
  * MaCe         Mariano Cerdeiro
- * GMuro        Gustavo Muro
  * PR           Pablo Ridolfi
  * JuCe         Juan Cecconi
- *
+ * GMuro        Gustavo Muro
+ * ErPe         Eric Pernia
  */
 
 /*
  * modification history (new versions first)
  * -----------------------------------------------------------
- * 20140805 v0.0.1   GMuro first functional version
+ * 20150603 v0.0.3   ErPe change uint8 type by uint8_t
+ *                        in line 172
+ * 20141019 v0.0.2   JuCe add printf in each task,
+ *                        remove trailing spaces
+ * 20140731 v0.0.1   PR   first functional version
  */
 
 /*==================[inclusions]=============================================*/
-#include "os.h"
-#include "ciaaPOSIX_stdio.h"
-#include "ciaaPOSIX_stdlib.h"
+#include "os.h"               /* <= operating system header */
+#include "ciaaPOSIX_stdio.h"  /* <= device handler header */
+#include "ciaaPOSIX_string.h" /* <= string header */
 #include "ciaak.h"            /* <= ciaa kernel header */
-#include "serial.h"
+#include "blinking.h"         /* <= own header */
 
 /*==================[macros and definitions]=================================*/
 
@@ -77,21 +81,9 @@
 
 /*==================[internal data definition]===============================*/
 
-/** \brief File descriptor for ADC
- *
- * Device path /dev/serial/aio/in/0
- */
-static int32_t fd_adc;
-
 /** \brief File descriptor for digital output ports
  *
  * Device path /dev/dio/out/0
- */
-static int32_t fd_out;
-
-/** \brief File descriptor of the USB uart
- *
- * Device path /dev/serial/uart/1
  */
 static int32_t fd_uart;
 
@@ -151,73 +143,62 @@ void ErrorHook(void)
  */
 TASK(InitTask)
 {
-   /* init the ciaa kernel */
+   /* init CIAA kernel and devices */
    ciaak_start();
 
-   /* open CIAA ADC */
-   //fd_adc = ciaaPOSIX_open("/dev/serial/aio/in/0", ciaaPOSIX_O_RDONLY);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_SAMPLE_RATE, 100000);
-   //ciaaPOSIX_ioctl(fd_adc, ciaaPOSIX_IOCTL_SET_CHANNEL, ciaaCHANNEL_3);
 
-   /* open CIAA digital outputs */
-   fd_out = ciaaPOSIX_open("/dev/dio/out/0", ciaaPOSIX_O_RDWR);
 
-   /* open UART connected to USB bridge (FT2232) */
    fd_uart = ciaaPOSIX_open("/dev/serial/uart/1", ciaaPOSIX_O_RDWR);
 
-   /* change baud rate for uart usb */
-   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_BAUDRATE, (void *)ciaaBAUDRATE_115200);
+   ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_BAUDRATE, (void *)ciaaBAUDRATE_9600);
 
-   /* change FIFO TRIGGER LEVEL for uart usb */
+
    ciaaPOSIX_ioctl(fd_uart, ciaaPOSIX_IOCTL_SET_FIFO_TRIGGER_LEVEL, (void *)ciaaFIFO_TRIGGER_LEVEL2);
 
-   /* Activates the ModbusSlave task */
-   ActivateTask(Analogic);
-   //SetRelAlarm(AnalogicAlarm, 250, 50);
-
-   /* end InitTask */
+   //SetRelAlarm(ActivatePeriodicTask, 350, 250);
+   ActivateTask(PeriodicTask);
+   SetRelAlarm(ActivatePeriodicTask, 350, 250);
+   /* terminate task */
    TerminateTask();
 }
 
-TASK(Analogic)
+/** \brief Periodic Task
+ *
+ * This task is started automatically every time that the alarm
+ * ActivatePeriodicTask expires.
+ *
+ */
+TASK(PeriodicTask)
 {
-   /* 
-      ADC!
-   */
-   uint32_t serie;
+	uint32_t serie;
 
-   /* Read ADC. */
-   ciaaPOSIX_read(serie, &serie, sizeof(serie));
+	ciaaPOSIX_read(fd_uart, serie, ciaaPOSIX_strlen(serie));
+	ciaaPOSIX_write(fd_uart, serie, ciaaPOSIX_strlen(serie));
+	if(serie==97){
+		char message[] = "abcdefghijklmnopqrstuvwxyz";
+		ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
+	}
 
-   /* Signal gain. */
-  // adc_data >>= 0;
-
-   /* 
-      SERIAL!
-   */
-
-   char message[] = "abcdefghijklmnopqrstuvwxyz";
-   ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
-   //char message2[] = "Mane es un puto. No hay jaja   ";
-  // ciaaPOSIX_write(fd_uart, message2, ciaaPOSIX_strlen(message2));
-   /* 
-      BLINKING!
-
-   uint8_t outputs;   to store outputs status
-
-   /* write blinking message */
-   //ciaaPOSIX_printf("Blinking\n");
-
-   /* blink output */
-  // ciaaPOSIX_read(fd_out, &outputs, 1);
-  // outputs ^= 0x20;
-  // ciaaPOSIX_write(fd_out, &outputs, 1);
-
-   /* end of Task */
-   TerminateTask();
+	/* terminate task */
+	TerminateTask();
 }
 
+TASK(ChotaTask)
+{
+	uint32_t serie;
+
+	ciaaPOSIX_read(fd_uart, &serie, sizeof(serie));
+	ciaaPOSIX_write(fd_uart, serie, ciaaPOSIX_strlen(serie));
+	if(serie==97){
+		char message[] = "abcdefghijklmnopqrstuvwxyz";
+		ciaaPOSIX_write(fd_uart, message, ciaaPOSIX_strlen(message));
+	}
+
+	/* terminate task */
+	TerminateTask();
+}
 /** @} doxygen end group definition */
 /** @} doxygen end group definition */
 /** @} doxygen end group definition */
 /*==================[end of file]============================================*/
+
